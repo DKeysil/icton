@@ -19,7 +19,6 @@ async def start(message: types.Message):
     user = await db.Users.find_one({
         "telegram_id": telegram_id
     })
-
     if user:
         logger.info(f'user exist.')
         await message.reply('Вы уже зарегистрированы.')
@@ -89,7 +88,8 @@ async def accept_callback(callback_query: types.CallbackQuery, state: FSMContext
             'first_name': data.get('first_name'),
             'second_name': data.get('second_name'),
             'third_name': data.get('third_name'),
-            'isu_number': data.get('isu_number')
+            'isu_number': data.get('isu_number'),
+            'email_confirmation': False
         })
         logger.info(f'Start by: {callback_query.message.from_user.id}\n'
                     f'insert_one user in db status: {result.acknowledged}')
