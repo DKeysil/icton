@@ -200,7 +200,7 @@ async def get_coming_subjects_string(min_obj, message: types.Message, user):
         string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
 
     # кнопка подписки на напоминания
-    button = types.InlineKeyboardButton(text="Подписаться на напоминания",
+    button = types.InlineKeyboardButton(text="🔔 Подписаться на напоминания",
                                         callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
     markup.add(button)
 

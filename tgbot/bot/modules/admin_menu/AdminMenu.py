@@ -16,7 +16,7 @@ class Menu(StatesGroup):
 
 
 @dp.message_handler(lambda message: message.chat.type == 'private', commands=['admin'])
-async def admin_menu(message: types.Message):
+async def admin_menu(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
     db = SingletonClient.get_data_base()
 
@@ -33,33 +33,21 @@ async def admin_menu(message: types.Message):
     if not group:
         return await message.answer('Вы не админ группы.')
 
-    add_homework = types.KeyboardButton('Добавить ДЗ или ссылку на zoom')
-    back_button = types.KeyboardButton('Выйти')
-    btn_list = [
-        [add_homework],
-        [back_button]
-    ]
-    settings_keyboard_markup = types.ReplyKeyboardMarkup(btn_list)
-    await message.answer('Меню админа группы:', reply_markup=settings_keyboard_markup)
     await Menu.admin.set()
+    await choose_action_menu(message)
 
 
-@dp.message_handler(lambda message: message.text == 'Назад', state=[Menu.admin, Menu.add_homework, Menu.choose_action])
-async def back(message: types.Message, state: FSMContext):
-    await admin_menu(message)
-    await Menu.admin.set()
-
-
-@dp.message_handler(lambda message: message.text == 'Выйти', state=[Menu.admin])
-async def exit(message: types.Message):
+@dp.message_handler(lambda message: message.text == 'Выйти', state=[Menu.admin, Menu.add_homework, Menu.add_zoom_link, Menu.choose_action])
+async def exit_(message: types.Message, state: FSMContext):
     await message.answer('Done', reply_markup=types.ReplyKeyboardRemove())
+    await state.finish()
 
 
 @dp.message_handler(lambda message: message.text == 'Добавить ДЗ или ссылку на zoom', state=[Menu.admin])
-async def homework(message: types.Message, state: FSMContext):
-    string = 'Меню добавления домашнего задания / ссылки на zoom.'
+async def choose_action_menu(message: types.Message):
+    string = 'Меню добавления домашнего задания / ссылки на zoom.\nДомашнее задание | Ссылка на zoom | Название | Дата'
     markup = types.ReplyKeyboardMarkup()
-    markup.add(types.KeyboardButton(text='Назад'))
+    markup.add(types.KeyboardButton(text='Выйти'))
     await message.answer(string, reply_markup=markup)
 
     telegram_id = message.from_user.id
@@ -77,6 +65,11 @@ async def homework(message: types.Message, state: FSMContext):
         string = ''
         hw = await db.Homework.find_one({"subject_id": ObjectId(subj['_id']), "date": obj[1]})
         if hw:
+            string += '✅ | '
+        else:
+            string += '❌ | '
+        zm = await db.ZoomLinks.find_one({"subject_id": ObjectId(subj['_id']), "date": obj[1]})
+        if zm:
             string += '✅ | '
         else:
             string += '❌ | '
@@ -98,7 +91,6 @@ async def homework(message: types.Message, state: FSMContext):
 
     string = 'Список ближайших пар и статус домашнего задания:'
     await message.answer(string, reply_markup=markup, disable_web_page_preview=True)
-    await Menu.choose_action.set()
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data.split(',')[0] == 'am', state=[Menu.admin])
@@ -135,6 +127,11 @@ async def handle_am_callback_query(callback_query: types.CallbackQuery):
             string += '✅ | '
         else:
             string += '❌ | '
+        zm = await db.ZoomLinks.find_one({"subject_id": ObjectId(subj['_id']), "date": obj[1]})
+        if zm:
+            string += '✅ | '
+        else:
+            string += '❌ | '
         string += f"{subj['title']} {obj[1].strftime('%H:%M %d.%m.%Y')}"
         button = types.InlineKeyboardButton(text=string, callback_data=f'cha,{subj["_id"]},{obj[1]}')
         markup.add(button)
@@ -163,10 +160,9 @@ async def handle_am_callback_query(callback_query: types.CallbackQuery):
     _message = await callback_query.message.edit_text(string, reply_markup=markup, parse_mode='HTML',
                                                       disable_web_page_preview=True)
     await callback_query.answer()
-    await Menu.choose_action.set()
 
 
-@dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('cha'), state=[Menu.choose_action])
+@dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('cha'), state=[Menu.admin])
 async def choose_action(callback_query: types.CallbackQuery, state: FSMContext):
     db = SingletonClient.get_data_base()
     subject_id = ObjectId(callback_query.data.split(',')[1])
@@ -180,14 +176,15 @@ async def choose_action(callback_query: types.CallbackQuery, state: FSMContext):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton(text='Добавить домашнее задание', callback_data='tp,homework'))
     markup.add(types.InlineKeyboardButton(text='Добавить ссылку на zoom', callback_data='tp,zoom'))
-    await callback_query.message.edit_text(f'Выберите что вы хотите добавить для {subject["title"]}:', reply_markup=markup)
+    await callback_query.message.edit_text(f'Выберите что вы хотите добавить для <b>{subject["title"]}</b>:', reply_markup=markup)
+    await Menu.choose_action.set()
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data == 'tp,homework', state=[Menu.choose_action])
 async def add_homework(callback_query: types.CallbackQuery, state: FSMContext):
     subject = await state.get_data('subject')
     subject = subject['subject']
-    await callback_query.message.answer(f'Пришлите домашнее задание, которое будет прикреплено к предмету {subject["title"]}')
+    await callback_query.message.answer(f'Пришлите домашнее задание, которое будет прикреплено к предмету <b>{subject["title"]}</b>')
     await Menu.add_homework.set()
 
 
@@ -207,7 +204,34 @@ async def get_homework(message: types.Message, state: FSMContext):
         logger.info(f"new homework for {subject['title']}")
         await message.answer('Домашнее задание добавлено.')
         await Menu.admin.set()
-        await homework(message, state)
+        await choose_action_menu(message)
+
+
+@dp.callback_query_handler(lambda callback_query: callback_query.data == 'tp,zoom', state=[Menu.choose_action])
+async def add_zoom_link(callback_query: types.CallbackQuery, state: FSMContext):
+    subject = await state.get_data('subject')
+    subject = subject['subject']
+    await callback_query.message.answer(f'Пришлите ссылку на zoom, которая будет прикреплена к предмету <b>{subject["title"]}</b>')
+    await Menu.add_zoom_link.set()
+
+
+@dp.message_handler(state=[Menu.add_zoom_link])
+async def set_zoom_link(message: types.Message, state: FSMContext):
+    db = SingletonClient.get_data_base()
+    subject = await state.get_data("subject")
+    subject = subject['subject']
+    date = await state.get_data("date")
+    date = datetime.fromisoformat(date['date'])
+    result = await db.ZoomLinks.insert_one({
+        'subject_id': subject['_id'],
+        'link': message.text,
+        'date': date
+    })
+    if result.acknowledged:
+        logger.info(f"new zoom link for {subject['title']}")
+        await message.answer('Ссылка на zoom добавлена.')
+        await Menu.admin.set()
+        await choose_action_menu(message)
 
 
 async def get_min_obj_list(user, page):
