@@ -6,6 +6,7 @@ from dateutil.rrule import rrule
 from bson import objectid
 
 
+@dp.message_handler(lambda message: message.text == 'Ближайшие пары')
 @dp.message_handler(commands=['subj'])
 async def coming_subjects(message: types.Message):
     # TODO: 1) найти пользователя 2) найти его группу 3) найти предметы, которые относятся к его группе 4) найти
@@ -20,7 +21,7 @@ async def coming_subjects(message: types.Message):
     if not user:
         return await message.reply('Вы не зарегистрированы. Зайдите в бота и напишите <code>/start</code>')
     elif not user.get('group_id'):
-        return await message.reply('Вы не указали группу. Зайдите в бота и напишите <code>/set_group</code>')
+        return await message.reply('Вы не указали группу.')
 
     group = await db.Groups.find_one({
         "_id": user.get("group_id")
