@@ -31,6 +31,8 @@ async def coming_subjects(message: types.Message):
     })
 
     subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
+    logger.info(user)
+    logger.info(group)
 
     logger.info(f'from {user["telegram_id"]}, group {group["title"]}, subjects_list {subjects_list}')
 
@@ -47,7 +49,14 @@ async def coming_subjects(message: types.Message):
     string += f'{min_subj["title"]}\n'
     string += f'Аудитория: {min_subj["audience"]}\n'
     string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}'
-    # TODO: добавить прикрепление ссылки на зум, если она есть.
+    # Прикрепление ссылки на зум.
+    zoom_link = await db.ZoomLinks.find_one({
+        "date": min_obj[1],
+        "subject_id": min_subj['_id']
+    })
+    if zoom_link:
+        string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
+
     # кнопка подписки на напоминания
     button = types.InlineKeyboardButton(text="Подписаться на напоминания",
                                         callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
@@ -73,7 +82,7 @@ async def coming_subjects(message: types.Message):
         })
         string += f'Преподаватель: {teacher["second_name"] + teacher["first_name"]}\n'
 
-    await message.answer(string, reply_markup=markup)
+    await message.answer(string, reply_markup=markup, disable_web_page_preview=True)
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data.split(',')[0] == 'cs')
@@ -108,8 +117,6 @@ async def handle_cs_callback_query(callback_query: types.CallbackQuery):
     min_subj = min_obj[0]
 
     markup = types.InlineKeyboardMarkup()
-    logger.info(min_subj["_id"])
-    logger.info(page)
     button = types.InlineKeyboardButton(text="Подписаться на напоминания",
                                         callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
     markup.add(button)
@@ -140,7 +147,14 @@ async def handle_cs_callback_query(callback_query: types.CallbackQuery):
         string = f'<b>Ближайшие занятие для {user["second_name"]} {user["first_name"]} [{page + 1} стр.]:</b>\n'
     string += f'{min_subj["title"]}\n'
     string += f'Аудитория: {min_subj["audience"]}\n'
-    string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}'
+    string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}\n'
+
+    zoom_link = await db.ZoomLinks.find_one({
+        "date": min_obj[1],
+        "subject_id": min_subj['_id']
+    })
+    if zoom_link:
+        string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
 
     _message = await callback_query.message.edit_text(string, reply_markup=markup, parse_mode='HTML',
                                                       disable_web_page_preview=True)
