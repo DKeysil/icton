@@ -1,0 +1,1 @@
+from bot.modules.admin_menu import AdminMenu

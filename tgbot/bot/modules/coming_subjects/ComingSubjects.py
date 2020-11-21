@@ -6,33 +6,6 @@ from dateutil.rrule import rrule
 from bson import objectid
 
 
-async def get_coming_subjects_string(min_obj, message: types.Message, user):
-    db = SingletonClient.get_data_base()
-    min_subj = min_obj[0]
-    markup = types.InlineKeyboardMarkup()
-    if message.chat.type == 'private':
-        string = '<b>Ваше ближайшее занятие:</b>\n'
-    else:
-        string = f'<b>Ближайшие занятие для {user["second_name"]} {user["first_name"]}:</b>\n'
-    string += f'{min_subj["title"]}\n'
-    string += f'Аудитория: {min_subj["audience"]}\n'
-    string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}\n'
-    # Прикрепление ссылки на зум.
-    zoom_link = await db.ZoomLinks.find_one({
-        "date": min_obj[1],
-        "subject_id": min_subj['_id']
-    })
-    if zoom_link:
-        string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
-
-    # кнопка подписки на напоминания
-    button = types.InlineKeyboardButton(text="Подписаться на напоминания",
-                                        callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
-    markup.add(button)
-
-    return string, markup
-
-
 @dp.message_handler(commands=['subj'])
 async def coming_subjects(message: types.Message):
     # TODO: 1) найти пользователя 2) найти его группу 3) найти предметы, которые относятся к его группе 4) найти
@@ -205,3 +178,30 @@ def get_min_obj(subjects_list, item: int = 0):
         return min_obj_list[item]
     except IndexError:
         return None
+
+
+async def get_coming_subjects_string(min_obj, message: types.Message, user):
+    db = SingletonClient.get_data_base()
+    min_subj = min_obj[0]
+    markup = types.InlineKeyboardMarkup()
+    if message.chat.type == 'private':
+        string = '<b>Ваше ближайшее занятие:</b>\n'
+    else:
+        string = f'<b>Ближайшие занятие для {user["second_name"]} {user["first_name"]}:</b>\n'
+    string += f'{min_subj["title"]}\n'
+    string += f'Аудитория: {min_subj["audience"]}\n'
+    string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}\n'
+    # Прикрепление ссылки на зум.
+    zoom_link = await db.ZoomLinks.find_one({
+        "date": min_obj[1],
+        "subject_id": min_subj['_id']
+    })
+    if zoom_link:
+        string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
+
+    # кнопка подписки на напоминания
+    button = types.InlineKeyboardButton(text="Подписаться на напоминания",
+                                        callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
+    markup.add(button)
+
+    return string, markup
