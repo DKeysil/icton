@@ -7,6 +7,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 class Start(StatesGroup):
     name = State()
     isu_num = State()
+    group = State()
     finish_ = State()
 
 
@@ -57,17 +58,41 @@ async def set_isu_num(message: types.Message, state: FSMContext):
         await state.update_data(isu_number=isu_number)
         logger.info(f'Start by: {message.from_user.id}. Name: {isu_number}')
 
-        await finish(message, state)
+        await Start.group.set()
+        await message.answer('Введите группу в формате: <b>K3221</b> (Первая буква английская).')
 
     except ValueError:
         await message.reply('Неверный формат.\n\nВведите номер ису в формате: <b>284431</b>.')
+
+
+@dp.message_handler(state=[Start.group])
+async def set_group(message: types.Message, state: FSMContext):
+    try:
+        if len(message.text.split(' ')) > 1:
+            raise ValueError
+        db = SingletonClient.get_data_base()
+        group = await db.Groups.find_one({
+            "title": message.text
+        })
+        if not group:
+            return await message.reply('Такой группы не существует\n\nВведите группу в формате: <b>K3221</b> (Первая буква английская).')
+
+        await state.update_data(group=message.text)
+        await state.update_data(group_id=group['_id'])
+        logger.info(f'Start by: {message.from_user.id}. Group: {message.text}')
+
+        await finish(message, state)
+
+    except ValueError:
+        await message.reply('Неверный формат.\n\nВведите группу в формате: <b>K3221</b> (Первая буква английская).')
 
 
 async def finish(message: types.Message, state: FSMContext):
     string = 'Проверьте введённые данные:\n\n'
     async with state.proxy() as data:
         string += f"ФИО: {data.get('second_name')} {data.get('first_name')} {data.get('third_name')}\n"
-        string += f'Номер в ИСУ: {data.get("isu_number")}'
+        string += f'Номер в ИСУ: {data.get("isu_number")}\n'
+        string += f'Группа: {data.get("group")}'
     await Start.finish_.set()
     await message.answer(string, reply_markup=under_event_keyboard())
 
@@ -94,7 +119,8 @@ async def accept_callback(callback_query: types.CallbackQuery, state: FSMContext
             'second_name': data.get('second_name'),
             'third_name': data.get('third_name'),
             'isu_number': data.get('isu_number'),
-            'email_confirmation': False
+            'email_confirmation': False,
+            'group_id': data.get('group_id')
         })
         logger.info(f'Start by: {callback_query.message.from_user.id}\n'
                     f'insert_one user in db status: {result.acknowledged}')

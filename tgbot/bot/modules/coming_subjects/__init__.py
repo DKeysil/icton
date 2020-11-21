@@ -1,0 +1,1 @@
+from bot.modules.coming_subjects import ComingSubjects
