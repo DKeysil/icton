@@ -22,20 +22,20 @@ async def fill_db():
     await db.Subjects.insert_many([
         {
             "title": "Математика. Практика.",
-            "freq_even": {"FREQ": WEEKLY, "interval": 2, "byweekday": 3, "dt": datetime(year=2020, month=11, day=26, hour=15, minute=20)},
+            "freq": {"FREQ": WEEKLY, "interval": 2, "byweekday": 3, "dt": datetime(year=2020, month=11, day=26, hour=15, minute=20)},
             "group_id": group_1,
             "audience": "318"
         },
         {
             "title": "Математика. Практика.",
-            "freq_even": {"FREQ": WEEKLY, "interval": 2, "byweekday": 2,
+            "freq": {"FREQ": WEEKLY, "interval": 2, "byweekday": 2,
                           "dt": datetime(year=2020, month=11, day=25, hour=11, minute=40)},
             "group_id": group_2,
             "audience": "330"
         },
         {
             "title": "Математика. Лекция.",
-            "freq_even": {"FREQ": WEEKLY, "byweekday": 3, "dt": datetime(year=2020, month=11, day=26, hour=17, minute=00)},
+            "freq": {"FREQ": WEEKLY, "byweekday": 3, "dt": datetime(year=2020, month=11, day=26, hour=17, minute=00)},
             "group_id": group_1,
             "audience": "550"
         }
