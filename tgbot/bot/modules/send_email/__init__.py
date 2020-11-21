@@ -1,1 +1,1 @@
-from bot.modules.send_email import Send_email
+from bot.modules.send_email import SendEmail
