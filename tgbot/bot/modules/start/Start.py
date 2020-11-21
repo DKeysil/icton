@@ -14,14 +14,18 @@ class Start(StatesGroup):
 async def start(message: types.Message):
     logger.info('command: /start')
     telegram_id = message.from_user.id
+    logger.info(telegram_id)
     db = SingletonClient.get_data_base()
 
     user = await db.Users.find_one({
         "telegram_id": telegram_id
     })
+
+    logger.info(user)
+
     if user:
         logger.info(f'user exist.')
-        await message.reply('Вы уже зарегистрированы.')
+        return await message.reply('Вы уже зарегистрированы.')
 
     await message.reply('Введите <b>Фамилию Имя Отчество</b>.')
     await Start.name.set()
@@ -29,6 +33,7 @@ async def start(message: types.Message):
 
 @dp.message_handler(state=[Start.name])
 async def set_name(message: types.Message, state: FSMContext):
+    await state.update_data(telegram_id=message.from_user.id)
     if len(message.text.split(' ')) == 3:
         second_name, first_name, third_name = message.text.split(' ')
         await state.update_data(second_name=second_name)
@@ -84,7 +89,7 @@ async def accept_callback(callback_query: types.CallbackQuery, state: FSMContext
 
     async with state.proxy() as data:
         result = await db.Users.insert_one({
-            'telegram_id': callback_query.message.from_user.id,
+            'telegram_id': data.get('telegram_id'),
             'first_name': data.get('first_name'),
             'second_name': data.get('second_name'),
             'third_name': data.get('third_name'),
