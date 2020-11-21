@@ -5,6 +5,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from bson.objectid import ObjectId
 from dateutil.rrule import rrule
 from datetime import datetime
+from bot.modules.menu.Menu import menu_markup
 
 
 class Menu(StatesGroup):
@@ -16,6 +17,7 @@ class Menu(StatesGroup):
 
 
 @dp.message_handler(lambda message: message.chat.type == 'private', commands=['admin'])
+@dp.message_handler(lambda message: message.chat.type == 'private' and message.text == 'Функции админа')
 async def admin_menu(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
     db = SingletonClient.get_data_base()
@@ -39,7 +41,8 @@ async def admin_menu(message: types.Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text == 'Выйти', state=[Menu.admin, Menu.add_homework, Menu.add_zoom_link, Menu.choose_action])
 async def exit_(message: types.Message, state: FSMContext):
-    await message.answer('Done', reply_markup=types.ReplyKeyboardRemove())
+    markup = await menu_markup(message.from_user.id)
+    await message.answer('Done', reply_markup=markup)
     await state.finish()
 
 

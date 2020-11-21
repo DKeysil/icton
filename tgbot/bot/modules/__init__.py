@@ -5,3 +5,5 @@ from bot.modules import start
 from bot.modules import coming_subjects
 
 from bot.modules import admin_menu
+
+from bot.modules import menu
