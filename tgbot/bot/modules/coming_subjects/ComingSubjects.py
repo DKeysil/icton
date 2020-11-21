@@ -27,46 +27,46 @@ async def coming_subjects(message: types.Message):
     })
 
     subjects_cursor = db.Subjects.find({
-        "group_id": group.get("_id")
+        "group_id": objectid.ObjectId(user.get("group_id"))
     })
 
     subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
 
     logger.info(f'from {user["telegram_id"]}, group {group["title"]}, subjects_list {subjects_list}')
 
-    now = datetime.now()
-
-    rrule_list = [(subject, list(rrule(**(subject['freq']),
-                                       until=datetime(year=2020, month=12, day=31)))) for subject in
-                  subjects_list]
-    min_obj = (None, datetime(year=2025, month=12, day=31))
-    for obj in rrule_list:
-        subj = obj[0]
-        dts = obj[1]
-        for dt in dts:
-            if now < dt < min_obj[1]:
-                min_obj = (subj, dt)
-                break
-
-    if not min_obj[0]:
-        logger.info(f'from {user["telegram_id"]}, group {group["title"]}, Ближайшая пара не найдена')
-        return await message.answer('Ближайшая пара не найдена')
+    min_obj = get_min_obj(subjects_list)
 
     logger.info(f'from {user["telegram_id"]}, group {group["title"]}, Closest subj {min_obj[0]}')
     min_subj = min_obj[0]
 
     markup = types.InlineKeyboardMarkup()
-    string = '<b>Ваше ближайшее занятие:</b>\n'
+    if message.chat.type == 'private':
+        string = '<b>Ваше ближайшее занятие:</b>\n'
+    else:
+        string = f'<b>Ближайшие занятие для {user["second_name"]} {user["first_name"]}:</b>\n'
     string += f'{min_subj["title"]}\n'
     string += f'Аудитория: {min_subj["audience"]}\n'
     string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}'
     # TODO: добавить прикрепление ссылки на зум, если она есть.
     # кнопка подписки на напоминания
-    button = types.InlineKeyboardButton(text="Подписаться на напоминания", callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
+    button = types.InlineKeyboardButton(text="Подписаться на напоминания",
+                                        callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
     markup.add(button)
 
     # TODO: добавить кнопку "посмотреть ДЗ"
-    # TODO: добавить кнопку, чтобы перелестнуть на следующий ближайший
+    # перелистывание предметов
+    """
+    callback_data:
+    1) cs - название модуля
+    2) l, r, n - left, right, none
+    3) int - номер страницы
+    4) user_id
+    """
+    if get_min_obj(subjects_list, 1):
+        button_1 = types.InlineKeyboardButton(text="❌", callback_data=f'cs,n,0,{user["_id"]}')
+        button_2 = types.InlineKeyboardButton(text="➡️", callback_data=f'cs,r,1,{user["_id"]}')
+        markup.row(button_1, button_2)
+
     if _id := min_subj.get('teacher_id'):
         teacher = await db.Teachers.find_one({
             '_id': _id
@@ -74,6 +74,77 @@ async def coming_subjects(message: types.Message):
         string += f'Преподаватель: {teacher["second_name"] + teacher["first_name"]}\n'
 
     await message.answer(string, reply_markup=markup)
+
+
+@dp.callback_query_handler(lambda callback_query: callback_query.data.split(',')[0] == 'cs')
+async def handle_cs_callback_query(callback_query: types.CallbackQuery):
+    """
+    Обработчик нажатия на кнопку под сообщением с ближайшей парой.
+    Лямбда проверяет, чтобы обрабатывалось только y кнопки
+    Args:
+        callback_query (types.CallbackQuery): Документация на сайте телеграма
+    """
+
+    split_data = callback_query.data.split(',')
+    if split_data[1] == 'n':
+        return await callback_query.answer(text='Там больше ничего нет...')
+
+    page = int(split_data[2])
+    user_id = objectid.ObjectId(split_data[3])
+
+    db = SingletonClient.get_data_base()
+
+    user = await db.Users.find_one({
+        "_id": user_id
+    })
+
+    subjects_cursor = db.Subjects.find({
+        "group_id": objectid.ObjectId(user.get("group_id"))
+    })
+
+    subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
+
+    min_obj = get_min_obj(subjects_list, page)
+    min_subj = min_obj[0]
+
+    markup = types.InlineKeyboardMarkup()
+    logger.info(min_subj["_id"])
+    logger.info(page)
+    button = types.InlineKeyboardButton(text="Подписаться на напоминания",
+                                        callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
+    markup.add(button)
+
+    # Проверяет, есть ли пары на предыдущих страницах.
+    left_min_obj = get_min_obj(subjects_list, page - 1)
+    if left_min_obj:
+        left_button = types.InlineKeyboardButton(
+            text='⬅️', callback_data=f'cs,l,{page - 1},{user_id}')
+    else:
+        left_button = types.InlineKeyboardButton(
+            text='❌', callback_data=f'cs,n,{page},{user_id}')
+
+    # Проверяет, есть ли пары на следующих страницах.
+    right_min_obj = get_min_obj(subjects_list, page + 1)
+    if right_min_obj:
+        right_button = types.InlineKeyboardButton(
+            text='➡️', callback_data=f'cs,r,{page + 1},{user_id}')
+    else:
+        right_button = types.InlineKeyboardButton(
+            text='❌', callback_data=f'cs,n,{page},{user_id}')
+
+    markup.row(left_button, right_button)
+
+    if callback_query.message.chat.type == 'private':
+        string = f'<b>Ваше ближайшее занятие [{page + 1} стр.]:</b>\n'
+    else:
+        string = f'<b>Ближайшие занятие для {user["second_name"]} {user["first_name"]} [{page + 1} стр.]:</b>\n'
+    string += f'{min_subj["title"]}\n'
+    string += f'Аудитория: {min_subj["audience"]}\n'
+    string += f'Когда: {min_obj[1].strftime("<b>%H:%M</b> %d.%m.%Y")}'
+
+    _message = await callback_query.message.edit_text(string, reply_markup=markup, parse_mode='HTML',
+                                                      disable_web_page_preview=True)
+    await callback_query.answer()
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('SubscribeNotifications'))
@@ -92,7 +163,8 @@ async def subscribe_update(callback_query: types.CallbackQuery):
         return await callback_query.answer('Вы не зарегистрированы в боте.')
 
     subscription = await db.SubjectNotifications.find_one({
-        "user_id": user['_id']
+        "user_id": user['_id'],
+        "subject_id": objectid.ObjectId(subject_id)
     })
 
     if subscription:
@@ -107,3 +179,25 @@ async def subscribe_update(callback_query: types.CallbackQuery):
     if result.acknowledged:
         logger.info(f'subscribe notifications request from {telegram_id}. user successfully subscribed')
         return await callback_query.answer('Вы подписались на напоминания о паре.')
+
+
+def get_min_obj(subjects_list, item: int = 0):
+    if item < 0:
+        return None
+    now = datetime.now()
+
+    rrule_list = [(subject, list(rrule(**(subject['freq']),
+                                       until=datetime(year=2020, month=12, day=31)))) for subject in subjects_list]
+    min_obj_list = []
+    for obj in rrule_list:
+        subj = obj[0]
+        dts = obj[1]
+        for dt in dts:
+            if now < dt:
+                min_obj_list.append((subj, dt))
+    min_obj_list.sort(key=lambda x: x[1])
+    try:
+        logger.info(f"min obj {min_obj_list[item]}, item {item}")
+        return min_obj_list[item]
+    except IndexError:
+        return None
