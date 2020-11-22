@@ -31,7 +31,7 @@ async def coming_subjects(message: types.Message):
         "group_id": objectid.ObjectId(user.get("group_id"))
     })
 
-    subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
+    subjects_list = await subjects_cursor.to_list(length=await db.Subjects.count_documents({}))
     logger.info(user)
     logger.info(group)
 
@@ -93,7 +93,7 @@ async def handle_cs_callback_query(callback_query: types.CallbackQuery):
         "group_id": objectid.ObjectId(user.get("group_id"))
     })
 
-    subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
+    subjects_list = await subjects_cursor.to_list(length=await db.Subjects.count_documents({}))
 
     min_obj = get_min_obj(subjects_list, page)
     min_subj = min_obj[0]

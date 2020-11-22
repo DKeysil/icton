@@ -24,3 +24,4 @@ class AnalyticsMiddleware(BaseMiddleware):
 dp.middleware.setup(AnalyticsMiddleware())
 
 from bot import modules
+from tasks import *
