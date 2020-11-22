@@ -28,7 +28,6 @@ class FormatEmail(StatesGroup):
     body = State()
 
 
-
 async def generate_code():
     code = ''
     random.seed(time.time())
@@ -118,7 +117,7 @@ async def format_direction(message, state, db):
 
 
 @dp.message_handler(lambda message: message.chat.type == 'private', commands=['send_email'])
-async def send_email_message(message: types.Message, state: FSMContext):
+async def send_email_message(message: types.Message, state: FSMContext, teacher_email=''):
     logger.info('command: /send_email')
     db = SingletonClient.get_data_base()
     telegram_id = message.from_user.id
@@ -129,9 +128,15 @@ async def send_email_message(message: types.Message, state: FSMContext):
     await state.update_data(group_id=user['group_id'])
     logger.info(user)
     if user['email_confirmation']:
-        logger.info('Ready to format an email')
-        await format_direction(message, state, db)
-        await SendingEmail.format_email.set()
+        if not teacher_email:
+            logger.info('Ready to format an email')
+            await format_direction(message, state, db)
+            await SendingEmail.format_email.set()
+        else:
+            await state.update_data(teacher_email=teacher_email)
+            await message.answer('Введите текст заголовка:')
+            await FormatEmail.subject.set()
+
     else:
         logger.info('Can not sand an email.\nNeed email confirmation')
         await message.answer('Во избежание спама и датамусора мне нужно подтвердить ваш email.\nПожалуйста, '
