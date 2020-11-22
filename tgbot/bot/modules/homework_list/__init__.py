@@ -1,0 +1,1 @@
+from bot.modules.homework_list import HomeWorkList

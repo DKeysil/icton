@@ -20,8 +20,9 @@ async def menu_markup(telegram_id):
     })
 
     coming_subjects = types.KeyboardButton('Ближайшие пары')
+    homework_list = types.KeyboardButton('Список домашних заданий')
     btn_list = [
-        [coming_subjects]
+        [coming_subjects, homework_list]
     ]
     if user.get('_id') == group.get('admin_id'):
         admin_menu = types.KeyboardButton('Функции админа')
