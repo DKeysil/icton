@@ -113,6 +113,7 @@ async def format_direction(message, state, db):
         text = f"{teacher['first_name']} {teacher['second_name']} {teacher['third_name']}" \
                f"\nНомер ису: {teacher['isu_number']}"
         await message.answer(text, reply_markup=sending_email_keyboard(teacher['email']))
+        logger.info('Preparing email to {0}'.format(teacher['email']))
     pass
 
 
@@ -184,17 +185,20 @@ async def format_message(callback_query: types.CallbackQuery, state: FSMContext)
 async def set_subject(message: types.Message, state:FSMContext):
     if message.text != '':
         subject = message.text
+        logger.info('subject: {0}'.format(subject))
         await state.update_data(subject=subject)
         await message.answer("Введите текст вашего письма")
         await FormatEmail.body.set()
     else:
+        logger.info('Empty subject has been inputted')
         await message.reply('Заголовок не может быть пустым.\nПожалуйста введите текст заголовка:')
 
 
 @dp.message_handler(state=[FormatEmail.body])
-async def set_text(message:types.Message, state:FSMContext):
+async def set_text(message: types.Message, state: FSMContext):
     text = message.text
     await state.update_data(text=text)
+    logger.info(text)
     await message.answer('Ваше сообщение почти отправлено!', reply_markup=sending_file_keyboard())
 
 
@@ -202,6 +206,7 @@ async def set_text(message:types.Message, state:FSMContext):
 async def send(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_reply_markup()
     await callback_query.message.answer('Ваше сообщение успешно отправлено.')
+    logger.info('Sending complete')
     async with state.proxy() as data:
         subject = data.get('subject')
         text = data.get('text')
@@ -212,12 +217,11 @@ async def send(callback_query: types.CallbackQuery, state: FSMContext):
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data == 'attach_file', state=[FormatEmail.body])
-async def attach_files_to_email(callback_query: types.CallbackQuery, state: FSMContext):
+async def attach_files_to_email(callback_query: types.CallbackQuery):
+    logger.info('Attaching files')
     await callback_query.message.edit_reply_markup()
     await callback_query.message.answer('Отправьте в чат все файлы, которые хотите прикрепить,'
                                         ' а после нажмите "Отправить"', reply_markup=send_keyboard())
-
-    pass
 
 
 def process_attachment(msg):
@@ -257,7 +261,8 @@ def attach_file(msg, filepath):
 
 
 @dp.message_handler(content_types=['document'], state=FormatEmail.body)
-async def adding_file_to_email(message: types.Message, state: FSMContext):
+async def adding_file_to_email(message: types.Message):
+    logger.info('Added new document to buffer')
     file_info = await bot.get_file(message.document.file_id)
     filepath = r'/nvsywbot/buffer/{0}'.format(message.document.file_name)
     await bot.download_file(file_info.file_path, destination=filepath)
