@@ -1,11 +1,10 @@
-import urllib
 from email.mime.audio import MIMEAudio
 from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from bot import bot
 from bot import dp, types, FSMContext
 import os
-import smtplib, email, mimetypes, ssl
+import smtplib, mimetypes, ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import re
@@ -26,8 +25,8 @@ class SendingEmail(StatesGroup):
 
 class FormatEmail(StatesGroup):
     subject = State()
-    text = State()
-    files = State()
+    body = State()
+
 
 
 async def generate_code():
@@ -50,6 +49,7 @@ async def send_an_email(addr, subject, text):
     msg['From'] = addr_from
     msg['To'] = addr
     msg['Subject'] = subject
+    process_attachment(msg)
 
     body = text
     msg.attach(MIMEText(body, 'plain'))
@@ -153,7 +153,15 @@ def sending_file_keyboard():
     button = types.InlineKeyboardButton(text="Прикрепить файл", callback_data='attach_file')
     markup.add(button)
 
-    button = types.InlineKeyboardButton(text="Завершить", callback_data='dont_attach_file')
+    button = types.InlineKeyboardButton(text="Завершить", callback_data='send')
+    markup.add(button)
+    return markup
+
+
+def send_keyboard():
+    markup = types.InlineKeyboardMarkup()
+
+    button = types.InlineKeyboardButton(text="Отправить", callback_data='send')
     markup.add(button)
     return markup
 
@@ -168,24 +176,24 @@ async def format_message(callback_query: types.CallbackQuery, state: FSMContext)
 
 
 @dp.message_handler(state=FormatEmail.subject)
-async def set_subject(message:types.Message, state:FSMContext):
+async def set_subject(message: types.Message, state:FSMContext):
     if message.text != '':
         subject = message.text
         await state.update_data(subject=subject)
         await message.answer("Введите текст вашего письма")
-        await FormatEmail.text.set()
+        await FormatEmail.body.set()
     else:
-        await message.reply('Заголовок не можеSт быть пустым.\nПожалуйста введите текст заголовка:')
+        await message.reply('Заголовок не может быть пустым.\nПожалуйста введите текст заголовка:')
 
 
-@dp.message_handler(state=[FormatEmail.text])
+@dp.message_handler(state=[FormatEmail.body])
 async def set_text(message:types.Message, state:FSMContext):
     text = message.text
     await state.update_data(text=text)
     await message.answer('Ваше сообщение почти отправлено!', reply_markup=sending_file_keyboard())
 
 
-@dp.callback_query_handler(lambda callback_query: callback_query.data == 'dont_attach_file', state=[FormatEmail.text])
+@dp.callback_query_handler(lambda callback_query: callback_query.data == 'send', state=[FormatEmail.body])
 async def send(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_reply_markup()
     await callback_query.message.answer('Ваше сообщение успешно отправлено.')
@@ -194,21 +202,59 @@ async def send(callback_query: types.CallbackQuery, state: FSMContext):
         text = data.get('text')
         teacher_email = data.get('teacher_email')
     await send_an_email(teacher_email, subject, text)
+
     await state.finish()
 
 
-@dp.callback_query_handler(lambda callback_query: callback_query.data == 'attach_file', state=[FormatEmail.text])
-async def attach_files(callback_query: types.CallbackQuery, state: FSMContext):
+@dp.callback_query_handler(lambda callback_query: callback_query.data == 'attach_file', state=[FormatEmail.body])
+async def attach_files_to_email(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_reply_markup()
-    await callback_query.message.answer('Отправьте файл')
-    await FormatEmail.files.set()
-    await state.finish()
+    await callback_query.message.answer('Отправьте в чат все файлы, которые хотите прикрепить,'
+                                        ' а после нажмите "Отправить"', reply_markup=send_keyboard())
+
     pass
 
 
-@dp.message_handler(content_types=['document'])
-async def adding_file_to_email(message: types.Message, state: FSMContext):
-   pass
+def process_attachment(msg):
+    dirpath = r'/nvsywbot/buffer'
+    dir = os.listdir(dirpath)
+    for file in dir:
+        attach_file(msg,dirpath+"/"+file)
+        os.remove(dirpath+"/"+file)
 
+
+def attach_file(msg, filepath):
+    filename = os.path.basename(filepath)
+    ctype, encoding = mimetypes.guess_type(filepath)
+    if ctype is None or encoding is not None:
+        ctype = 'application/octet-stream'
+    maintype, subtype = ctype.split('/', 1)
+    if maintype == 'text':
+        with open(filepath) as fp:
+            file = MIMEText(fp.read(), _subtype=subtype)
+            fp.close()
+    elif maintype == 'image':
+        with open(filepath, 'rb') as fp:
+            file = MIMEImage(fp.read(), _subtype=subtype)
+            fp.close()
+    elif maintype == 'audio':
+        with open(filepath, 'rb') as fp:
+            file = MIMEAudio(fp.read(), _subtype=subtype)
+            fp.close()
+    else:
+        with open(filepath, 'rb') as fp:
+            file = MIMEBase(maintype, subtype)
+            file.set_payload(fp.read())
+            fp.close()
+            encoders.encode_base64(file)
+    file.add_header('Content-Disposition', 'attachment', filename=filename)
+    msg.attach(file)
+
+
+@dp.message_handler(content_types=['document'], state=FormatEmail.body)
+async def adding_file_to_email(message: types.Message, state: FSMContext):
+    file_info = await bot.get_file(message.document.file_id)
+    filepath = r'/nvsywbot/buffer/{0}'.format(message.document.file_name)
+    await bot.download_file(file_info.file_path, destination=filepath)
 
 
