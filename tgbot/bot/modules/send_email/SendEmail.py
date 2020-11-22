@@ -1,3 +1,8 @@
+import urllib
+from email.mime.audio import MIMEAudio
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from bot import bot
 from bot import dp, types, FSMContext
 import os
 import smtplib, email, mimetypes, ssl
@@ -9,6 +14,7 @@ import random
 from motor_client import SingletonClient
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from loguru import logger
+from email import encoders
 
 
 class SendingEmail(StatesGroup):
@@ -16,11 +22,12 @@ class SendingEmail(StatesGroup):
     code_accepting = State()
     format_direction = State()
     format_email = State()
-    finish = State()
 
 
-async def format_message():
-    pass
+class FormatEmail(StatesGroup):
+    subject = State()
+    text = State()
+    files = State()
 
 
 async def generate_code():
@@ -85,18 +92,29 @@ async def code_accepting(message: types.Message, state: FSMContext):
         code = data.get('code')
         user_email = data.get('email')
     db = SingletonClient.get_data_base()
-    user = db.Users.find_one({
-        "telegram_id": message.from_user.id
-    })
     if message.text == code:
         logger.info('email has been accepted')
-        await message.answer('Вы успешно подтвердили свою почту')
+        await message.answer('Вы успешно подтвердили свою почту\nТеперь вы можете пользоваться командой /send_email')
         await db.Users.update_one({"telegram_id": message.from_user.id}, {'$set': {"email": user_email,
                                                                                    "email_confirmation": True}})
-        await SendingEmail.format_direction.set()
+        await format_direction(message, state, db)
+        await SendingEmail.format_email.set()
     else:
         logger.info('got an incorrect confirmation code')
         await message.reply('Вы ввели неправильный код. Попробуйте еще раз.')
+
+
+async def format_direction(message, state, db):
+    async with state.proxy() as data:
+        group = data.get('group_id')
+    subjects = db.Subjects.find({'group_id': group})
+    for subject in await subjects.to_list(length=100):
+        teacher_id = subject['teacher_id']
+        teacher = await db.Teachers.find_one({"_id": teacher_id})
+        text = f"{teacher['first_name']} {teacher['second_name']} {teacher['third_name']}" \
+               f"\nНомер ису: {teacher['isu_number']}"
+        await message.answer(text, reply_markup=sending_email_keyboard(teacher['email']))
+    pass
 
 
 @dp.message_handler(lambda message: message.chat.type == 'private', commands=['send_email'])
@@ -108,12 +126,89 @@ async def send_email_message(message: types.Message, state: FSMContext):
     user = await db.Users.find_one({
         "telegram_id": telegram_id
     })
+    await state.update_data(group_id=user['group_id'])
     logger.info(user)
     if user['email_confirmation']:
         logger.info('Ready to format an email')
-        await SendingEmail.format_direction.set()
+        await format_direction(message, state, db)
+        await SendingEmail.format_email.set()
     else:
         logger.info('Can not sand an email.\nNeed email confirmation')
         await message.answer('Во избежание спама и датамусора мне нужно подтвердить ваш email.\nПожалуйста, '
                              'введите его:')
         await SendingEmail.confirmation.set()
+
+
+def sending_email_keyboard(teacher_email):
+    markup = types.InlineKeyboardMarkup()
+
+    button = types.InlineKeyboardButton(text="Написать письмо", callback_data=teacher_email)
+    markup.add(button)
+    return markup
+
+
+def sending_file_keyboard():
+    markup = types.InlineKeyboardMarkup()
+
+    button = types.InlineKeyboardButton(text="Прикрепить файл", callback_data='attach_file')
+    markup.add(button)
+
+    button = types.InlineKeyboardButton(text="Завершить", callback_data='dont_attach_file')
+    markup.add(button)
+    return markup
+
+
+@dp.callback_query_handler(state=[SendingEmail.format_email])
+async def format_message(callback_query: types.CallbackQuery, state: FSMContext):
+    teacher_email = callback_query.data
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer('Введите текст заголовка')
+    await FormatEmail.subject.set()
+    await state.update_data(teacher_email=teacher_email)
+
+
+@dp.message_handler(state=FormatEmail.subject)
+async def set_subject(message:types.Message, state:FSMContext):
+    if message.text != '':
+        subject = message.text
+        await state.update_data(subject=subject)
+        await message.answer("Введите текст вашего письма")
+        await FormatEmail.text.set()
+    else:
+        await message.reply('Заголовок не можеSт быть пустым.\nПожалуйста введите текст заголовка:')
+
+
+@dp.message_handler(state=[FormatEmail.text])
+async def set_text(message:types.Message, state:FSMContext):
+    text = message.text
+    await state.update_data(text=text)
+    await message.answer('Ваше сообщение почти отправлено!', reply_markup=sending_file_keyboard())
+
+
+@dp.callback_query_handler(lambda callback_query: callback_query.data == 'dont_attach_file', state=[FormatEmail.text])
+async def send(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer('Ваше сообщение успешно отправлено.')
+    async with state.proxy() as data:
+        subject = data.get('subject')
+        text = data.get('text')
+        teacher_email = data.get('teacher_email')
+    await send_an_email(teacher_email, subject, text)
+    await state.finish()
+
+
+@dp.callback_query_handler(lambda callback_query: callback_query.data == 'attach_file', state=[FormatEmail.text])
+async def attach_files(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer('Отправьте файл')
+    await FormatEmail.files.set()
+    await state.finish()
+    pass
+
+
+@dp.message_handler(content_types=['document'])
+async def adding_file_to_email(message: types.Message, state: FSMContext):
+   pass
+
+
+
