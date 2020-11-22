@@ -91,21 +91,25 @@ async def code_accepting(message: types.Message, state: FSMContext):
         code = data.get('code')
         user_email = data.get('email')
     db = SingletonClient.get_data_base()
+    user = await db.Users.find_one({
+        "telegram_id": message.from_user.id
+    })
     if message.text == code:
         logger.info('email has been accepted')
         await message.answer('Вы успешно подтвердили свою почту\nТеперь вы можете пользоваться командой /send_email')
         await db.Users.update_one({"telegram_id": message.from_user.id}, {'$set': {"email": user_email,
                                                                                    "email_confirmation": True}})
-        await format_direction(message, state, db)
+        await format_direction(message, state, db, group_id=user['group_id'])
         await SendingEmail.format_email.set()
     else:
         logger.info('got an incorrect confirmation code')
         await message.reply('Вы ввели неправильный код. Попробуйте еще раз.')
 
 
-async def format_direction(message, state, db):
-    async with state.proxy() as data:
-        group = data.get('group_id')
+async def format_direction(message, state, db, group_id):
+    # async with state.proxy() as data:
+    #     group = data.get('group_id')
+    group = group_id
     subjects = db.Subjects.find({'group_id': group})
     for subject in await subjects.to_list(length=100):
         teacher_id = subject['teacher_id']
@@ -118,20 +122,21 @@ async def format_direction(message, state, db):
 
 
 @dp.message_handler(lambda message: message.chat.type == 'private', commands=['send_email'])
-async def send_email_message(message: types.Message, state: FSMContext, teacher_email=''):
+async def send_email_message(message: types.Message, state: FSMContext, teacher_email='', user_id=0):
     logger.info('command: /send_email')
     db = SingletonClient.get_data_base()
     telegram_id = message.from_user.id
-
+    if user_id:
+        telegram_id = user_id
     user = await db.Users.find_one({
         "telegram_id": telegram_id
     })
-    await state.update_data(group_id=user['group_id'])
+    # await state.update_data(group_id=user['group_id'])
     logger.info(user)
-    if user['email_confirmation']:
+    if user.get('email_confirmation'):
         if not teacher_email:
             logger.info('Ready to format an email')
-            await format_direction(message, state, db)
+            await format_direction(message, state, db, group_id=user['group_id'])
             await SendingEmail.format_email.set()
         else:
             await state.update_data(teacher_email=teacher_email)

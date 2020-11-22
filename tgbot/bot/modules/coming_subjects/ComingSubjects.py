@@ -4,6 +4,7 @@ from datetime import datetime
 from loguru import logger
 from dateutil.rrule import rrule
 from bson import objectid
+from bot.modules.send_email.SendEmail import send_email_message
 
 
 @dp.message_handler(lambda message: message.text == 'Ближайшие пары')
@@ -62,7 +63,7 @@ async def coming_subjects(message: types.Message):
         teacher = await db.Teachers.find_one({
             '_id': _id
         })
-        string += f'Преподаватель: {teacher["second_name"] + teacher["first_name"]}\n'
+        string += f'Преподаватель: {teacher["second_name"] + " " + teacher["first_name"]}\n'
 
     await message.answer(string, reply_markup=markup, disable_web_page_preview=True)
 
@@ -159,6 +160,12 @@ async def subscribe_update(callback_query: types.CallbackQuery):
         return await callback_query.answer('Вы подписались на напоминания о паре.')
 
 
+# @dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('SendEmail'))
+# async def subscribe_update(callback_query: types.CallbackQuery, state: FSMContext):
+#     email = callback_query.data.split(',')[1]
+#     await send_email_message(callback_query.message, state, email, callback_query.from_user.id)
+
+
 def get_min_obj(subjects_list, item: int = 0):
     if item < 0:
         return None
@@ -200,6 +207,14 @@ async def get_coming_subjects_string(min_obj, message: types.Message, user):
     if zoom_link:
         string += f"Ссылка на <a href=\"{zoom_link['link']}\">zoom</a>."
 
+    # if teacher_id := min_subj.get('teacher_id'):
+    #     teacher = await db.Teachers.find_one({
+    #         '_id': objectid.ObjectId(teacher_id)
+    #     })
+    #     teacher_email = teacher['email']
+    #     button = types.InlineKeyboardButton(text="📧 Написать преподавателю",
+    #                                         callback_data=f'SendEmail,{teacher_email}')
+    #     markup.add(button)
     # кнопка подписки на напоминания
     button = types.InlineKeyboardButton(text="🔔 Подписаться на напоминания",
                                         callback_data=f'SubscribeNotifications,{min_subj["_id"]}')
