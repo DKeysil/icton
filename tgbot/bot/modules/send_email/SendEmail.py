@@ -111,8 +111,13 @@ async def format_direction(message, state, db, group_id):
     #     group = data.get('group_id')
     group = group_id
     subjects = db.Subjects.find({'group_id': group})
-    for subject in await subjects.to_list(length=100):
+    subjects = subjects.to_list(length=100)
+    teacher_ids = []
+    for subject in await subjects:
         teacher_id = subject['teacher_id']
+        teacher_ids.append(teacher_id)
+    teacher_ids = frozenset(teacher_ids)
+    for teacher_id in teacher_ids:
         teacher = await db.Teachers.find_one({"_id": teacher_id})
         text = f"{teacher['first_name']} {teacher['second_name']} {teacher['third_name']}" \
                f"\nНомер ису: {teacher['isu_number']}"
