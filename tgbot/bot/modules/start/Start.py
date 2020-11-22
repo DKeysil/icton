@@ -21,6 +21,7 @@ async def start(message: types.Message):
     user = await db.Users.find_one({
         "telegram_id": telegram_id
     })
+
     logger.info(user)
 
     if user:
@@ -118,6 +119,7 @@ async def accept_callback(callback_query: types.CallbackQuery, state: FSMContext
             'second_name': data.get('second_name'),
             'third_name': data.get('third_name'),
             'isu_number': data.get('isu_number'),
+            'email_confirmation': False,
             'group_id': data.get('group_id')
         })
         logger.info(f'Start by: {callback_query.message.from_user.id}\n'
