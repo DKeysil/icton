@@ -11,6 +11,7 @@ from bot import bot
 
 @aiocron.crontab('0-59/10 * * * *', loop=loop)
 async def send_subj_notification():
+    logger.info('Начинаю отправку уведомления о занятиях раз в 10 минут')
     time = datetime(datetime.now().year,
                     datetime.now().month,
                     datetime.now().day,
@@ -39,6 +40,7 @@ async def send_subj_notification():
 
 @aiocron.crontab('0 20 */1 * *', loop=loop)
 async def send_everyday_subj_notification():
+    logger.info('Начинаю отправку ежедневных уведомлений о занятиях')
     day_start = datetime(datetime.now().year,
                          datetime.now().month,
                          datetime.now().day,
