@@ -12,6 +12,7 @@ class Menu(StatesGroup):
     admin = State()
     choose_action = State()
     add_homework = State()
+    add_homework_deadline = State()
     add_zoom_link = State()
     finish_ = State()
 
@@ -39,7 +40,7 @@ async def admin_menu(message: types.Message, state: FSMContext):
     await choose_action_menu(message)
 
 
-@dp.message_handler(lambda message: message.text == 'Выйти', state=[Menu.admin, Menu.add_homework, Menu.add_zoom_link, Menu.choose_action])
+@dp.message_handler(lambda message: message.text == 'Выйти', state=[Menu.admin, Menu.add_homework, Menu.add_zoom_link, Menu.choose_action, Menu.add_homework_deadline])
 async def exit_(message: types.Message, state: FSMContext):
     markup = await menu_markup(message.from_user.id)
     await message.answer('Done', reply_markup=markup)
@@ -87,7 +88,7 @@ async def choose_action_menu(message: types.Message):
     3) int - номер страницы
     4) user_id
     """
-    if await get_min_obj_list(user, 0):
+    if await get_min_obj_list(user, 1):
         button_1 = types.InlineKeyboardButton(text="❌", callback_data=f'am,n,0,{user["_id"]}')
         button_2 = types.InlineKeyboardButton(text="➡️", callback_data=f'am,r,1,{user["_id"]}')
         markup.row(button_1, button_2)
@@ -193,21 +194,36 @@ async def add_homework(callback_query: types.CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state=[Menu.add_homework])
 async def get_homework(message: types.Message, state: FSMContext):
-    db = SingletonClient.get_data_base()
-    subject = await state.get_data("subject")
-    subject = subject['subject']
-    date = await state.get_data("date")
-    date = datetime.fromisoformat(date['date'])
-    result = await db.Homework.insert_one({
-        'subject_id': subject['_id'],
-        'text': message.text,
-        'date': date
-    })
-    if result.acknowledged:
-        logger.info(f"new homework for {subject['title']}")
-        await message.answer('Домашнее задание добавлено.')
-        await Menu.admin.set()
-        await choose_action_menu(message)
+    await message.answer('Пришлите дедлайн домашнего задания в формате <code>13.12.2020</code>')
+    await state.update_data(text=message.text)
+    await Menu.add_homework_deadline.set()
+
+
+@dp.message_handler(state=[Menu.add_homework_deadline])
+async def get_homework_deadline(message: types.Message, state: FSMContext):
+    try:
+        deadline_date = datetime.strptime(message.text, '%d.%m.%Y')
+
+        db = SingletonClient.get_data_base()
+        subject = await state.get_data("subject")
+        subject = subject['subject']
+        text = await state.get_data("text")
+        text = text['text']
+        date = await state.get_data("date")
+        date = datetime.fromisoformat(date['date'])
+        result = await db.Homework.insert_one({
+            'subject_id': subject['_id'],
+            'text': text,
+            'date': date,
+            'deadline': deadline_date
+        })
+        if result.acknowledged:
+            logger.info(f"new homework for {subject['title']}")
+            await message.answer('Домашнее задание добавлено.')
+            await Menu.admin.set()
+            await choose_action_menu(message)
+    except ValueError:
+        await message.answer('Неверный формат.\n\nПришлите дедлайн домашнего задания в формате <code>13.12.2020</code>')
 
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data == 'tp,zoom', state=[Menu.choose_action])
@@ -243,7 +259,7 @@ async def get_min_obj_list(user, page):
         "group_id": ObjectId(user.get("group_id"))
     })
 
-    subjects_list = await subjects_cursor.to_list(length=await db.Groups.count_documents({}))
+    subjects_list = await subjects_cursor.to_list(length=await db.Subjects.count_documents({}))
 
     logger.info(subjects_list)
 
